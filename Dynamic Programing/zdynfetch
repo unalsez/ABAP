@@ -1,0 +1,105 @@
+FUNCTION zdynfetch.
+*"----------------------------------------------------------------------
+*"*"Local Interface:
+*"  IMPORTING
+*"     REFERENCE(I_TABNAME) TYPE  TABNAME
+*"  EXPORTING
+*"     REFERENCE(T_RET) TYPE  TABLE
+*"  TABLES
+*"      T_WHERE_COND STRUCTURE  ZWHERECOND OPTIONAL
+*"  EXCEPTIONS
+*"      WHERE_CLAUSE_ERROR
+*"----------------------------------------------------------------------
+  DATA : lt_fieldcat TYPE slis_t_fieldcat_alv.
+  DATA : ls_fieldcat LIKE LINE OF lt_fieldcat.
+  DATA : lt_fcat TYPE lvc_t_fcat.
+  DATA : ls_fcat TYPE lvc_s_fcat.
+  DATA : e_dyn_table TYPE REF TO data.
+  DATA : lv_condition TYPE string.
+  DATA : ls_cond LIKE LINE OF t_where_cond.
+  DATA : lv_subrc  TYPE sysubrc.
+  DATA : it_options LIKE rfc_db_opt OCCURS 0 WITH HEADER LINE.
+  DATA : lv_len TYPE i.
+
+  FIELD-SYMBOLS : <fs_dyn_table> TYPE STANDARD TABLE.
+
+  LOOP AT t_where_cond INTO ls_cond.
+    CLEAR : lv_subrc.
+    CALL FUNCTION 'HRIQ_STRFLD_EXIST_CHECK'
+      EXPORTING
+        i_tabname = i_tabname
+        i_fldname = ls_cond-fieldname
+      IMPORTING
+        e_subrc   = lv_subrc.
+
+    IF lv_subrc NE 0
+      OR NOT ( ls_cond-operator EQ '<' OR ls_cond-operator EQ '<=' OR
+              ls_cond-operator EQ '>' OR ls_cond-operator EQ '>=' OR
+              ls_cond-operator EQ '=' OR ls_cond-operator EQ '<>' OR
+              ls_cond-operator EQ 'EQ' OR ls_cond-operator EQ 'NE' OR
+              ls_cond-operator EQ 'GT' OR ls_cond-operator EQ 'LT' OR
+              ls_cond-operator EQ 'LE' OR ls_cond-operator EQ 'GE' ).
+      BREAK-POINT.
+      RAISE where_clause_error.
+
+    ENDIF.
+    CONCATENATE  '''' ls_cond-condition  '''' into ls_cond-condition.
+    ls_cond-logic = 'AND'.
+    MODIFY t_where_cond FROM ls_cond.
+  ENDLOOP.
+
+  CONCATENATE LINES OF t_where_cond INTO lv_condition SEPARATED BY space.
+  lv_len = STRLEN( lv_condition ).
+  lv_len = lv_len - 3.
+  lv_condition = lv_condition+0(lv_len).
+  CONDENSE lv_condition.
+
+  it_options-text = lv_condition.
+  APPEND it_options.
+  CLEAR it_options.
+
+  CALL FUNCTION 'REUSE_ALV_FIELDCATALOG_MERGE'
+    EXPORTING
+      i_structure_name = i_tabname
+    CHANGING
+      ct_fieldcat      = lt_fieldcat.
+  IF sy-subrc <> 0.
+    EXIT.
+  ENDIF.
+
+  LOOP AT lt_fieldcat INTO ls_fieldcat.
+    MOVE-CORRESPONDING  ls_fieldcat TO ls_fcat.
+    ls_fcat-fieldname     = ls_fieldcat-fieldname.
+    ls_fcat-ref_table     = ls_fieldcat-ref_tabname.
+    ls_fcat-ref_field     = ls_fieldcat-ref_fieldname.
+    ls_fcat-seltext       = ls_fieldcat-seltext_l.
+    ls_fcat-reptext       = ls_fieldcat-seltext_l.
+    ls_fcat-coltext       = ls_fieldcat-seltext_l.
+    ls_fcat-scrtext_s     = ls_fieldcat-seltext_s.
+    ls_fcat-scrtext_m     = ls_fieldcat-seltext_m.
+    ls_fcat-scrtext_l     = ls_fieldcat-seltext_l.
+    ls_fcat-tabname       = ls_fieldcat-tabname .
+    APPEND ls_fcat TO lt_fcat.
+    CLEAR  ls_fcat.
+
+  ENDLOOP.
+
+  CALL METHOD cl_alv_table_create=>create_dynamic_table
+    EXPORTING
+      i_style_table             = abap_true
+      it_fieldcatalog           = lt_fcat
+    IMPORTING
+      ep_table                  = e_dyn_table
+    EXCEPTIONS
+      generate_subpool_dir_full = 1
+      OTHERS                    = 2.
+
+  ASSIGN e_dyn_table->* TO <fs_dyn_table>.
+
+  BREAK-POINT.
+  SELECT * FROM (i_tabname) INTO CORRESPONDING FIELDS OF TABLE <fs_dyn_table>
+    WHERE (it_options).
+
+  MOVE-CORRESPONDING <fs_dyn_table> TO t_ret.
+
+ENDFUNCTION.

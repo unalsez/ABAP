@@ -1,0 +1,56 @@
+*&---------------------------------------------------------------------*
+*& Report ZTEST
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT ztest.
+
+PARAMETERS : p_tname TYPE tabname,
+             c_belnr LIKE bkpf-belnr,
+             o_belnr(4),
+             o_bukrs(4),
+             c_bukrs LIKE bkpf-bukrs.
+
+
+
+DATA : lt_cond LIKE zwherecond OCCURS 0 WITH HEADER LINE.
+FIELD-SYMBOLS : <fs> TYPE STANDARD TABLE.
+DATA: itab TYPE REF TO data.
+CREATE DATA itab TYPE TABLE OF (p_tname).
+
+
+assign itab->* to <fs>.
+
+lt_cond-fieldname = 'BELNR'.
+lt_cond-operator = o_belnr.
+lt_cond-condition = c_belnr.
+APPEND lt_cond.
+
+lt_cond-fieldname = 'BUKRS'.
+lt_cond-operator = o_bukrs.
+lt_cond-condition = c_bukrs.
+APPEND lt_cond.
+
+CALL FUNCTION 'ZDYNFETCH'
+  EXPORTING
+    i_tabname          = p_tname
+  IMPORTING
+    t_ret              = <fs>
+  TABLES
+    t_where_cond       = lt_cond
+  EXCEPTIONS
+    where_clause_error = 1
+    OTHERS             = 2.
+
+IF sy-subrc <> 0.
+
+ELSE.
+
+
+CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+  EXPORTING
+    i_structure_name = p_tname
+  TABLES
+    t_outtab         = <fs>.
+
+ENDIF.
